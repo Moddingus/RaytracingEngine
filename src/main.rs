@@ -10,8 +10,8 @@ use nalgebra::{
     Vector3
 };
 
-const W: usize = 70;
-const H: usize = 70;
+const W: usize = 80;
+const H: usize = 80;
 
 trait Helper {
     fn rotate_around(&self, axis: Vec3<f32>, angle: f32) -> Vec3<f32>;
@@ -32,11 +32,11 @@ impl Helper for Vec3<f32> {
     fn rotate_vector(&self, axis: Vec3<f32>, angle: f32) -> Vec3<f32> {
         let cos_angle = angle.cos();
         let sin_angle = angle.sin();
-        let axis_normalized = axis.normalize();
+        let axisn = axis.normalized();
     
-        let term1 = vector * cos_angle;
-        let term2 = axis_normalized.cross(vector) * sin_angle;
-        let term3 = axis_normalized * axis_normalized.dot(vector) * (1.0 - cos_angle);
+        let term1 = self * cos_angle;
+        let term2 = axisn.cross(*self) * sin_angle;
+        let term3 = axisn * axisn.dot(*self) * (1.0 - cos_angle);
     
         return term1 + term2 + term3;
     }
@@ -159,7 +159,7 @@ fn cast_rays(c: Camera, obj: Sphere) -> Vec<Rgba<u8>> {
 
     let n = c.normal(); //view plane normal 
 
-    let size = 1.0;
+    let size = 0.25;
     let zr = Vec3::new(1.0,0.0,0.0);
     let v = n.rotate_around(zr, 1.5707963268);
     let b = v.cross(n);
@@ -206,18 +206,26 @@ fn cast_rays(c: Camera, obj: Sphere) -> Vec<Rgba<u8>> {
     return buf;
 }
 fn intersect(p: Vec3<f32>, r: Ray, max_dist: f32, sphere: Sphere, dist: &mut f32) -> bool {
-    let mut c = 0.0;
-    let mut l = p;
-    while c < max_dist {
 
-        let mut normal = Vec3::new(0.0,0.0,0.0);
-        if sphere.colliding(l, &mut normal) {
-            *dist = c;
-            return true;
-        }
-        l += r.dir * 0.2;
-        c += 0.2;
+    let v = sphere.center - p;
+    let t = v.dot(r.dir);
+    
+    if (t < 0.0) {
+        return false;
     }
+
+    let v2 = v.dot(v);
+    let dis = sphere.rad * sphere.rad - v2 + t * t;
+
+    if (dis >= 0.0) {
+
+        let bruh = p + t * r.dir;
+
+        *dist = bruh.distance(p);
+
+        return true;
+    }
+
     return false;
 }
 fn render_bruh(cam: Camera, s: Sphere) -> Vec<u32> {
@@ -235,8 +243,8 @@ fn main() {
 
     let t = Triangle::new(p1, p2, p3);*/
 
-    let p4 = Vec3::new(0.0, 0.0, 12.0);
-    let mut s = Sphere::new(p4, 11.0);
+    let p4 = Vec3::new(0.0, 0.0, 3.0);
+    let mut s = Sphere::new(p4, 2.0);
 
     let pos = Vec3::new(0.0, 0.0, 0.0);
     let screen = Vec2::new(W as u32, H as u32);
@@ -248,7 +256,7 @@ fn main() {
     let mut count = 0;
 
     let mut opts = WindowOptions::default();
-    opts.scale = minifb::Scale::X8;
+    opts.scale = minifb::Scale::X16;
     let mut buf = render_bruh(cam, s);
     let mut win = Window::new("Canvas", W, H, opts).unwrap();
 
