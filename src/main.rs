@@ -1,8 +1,5 @@
 use std::{
     f32,
-    io,
-    ops::Mul,
-    mem,
 };
 use minifb::*;
 use vek::*;
@@ -19,6 +16,7 @@ const H: usize = 70;
 trait Helper {
     fn rotate_around(&self, axis: Vec3<f32>, angle: f32) -> Vec3<f32>;
     fn toVector3(&self) -> Vector3<f32>;
+    fn rotate_vector(&self, axis: Vec3<f32>, angle: f32) -> Vec3<f32>;
 }
 
 impl Helper for Vec3<f32> {
@@ -26,10 +24,21 @@ impl Helper for Vec3<f32> {
         return Vector3::new(self.x, self.y, self.z)
     }
     fn rotate_around(&self, axis: Vec3<f32>, angle: f32) -> Vec3<f32> {
-        let axis = Unit::new_normalize(Vector3::new(axis.x, axis.y, axis.z));
+        let axis = Unit::new_normalize(axis.toVector3());
         let rot = Rotation3::from_axis_angle(&axis, angle);
         let prod = rot * self.toVector3();
         return Vec3::new(prod.x,prod.y,prod.z)
+    }
+    fn rotate_vector(&self, axis: Vec3<f32>, angle: f32) -> Vec3<f32> {
+        let cos_angle = angle.cos();
+        let sin_angle = angle.sin();
+        let axis_normalized = axis.normalize();
+    
+        let term1 = vector * cos_angle;
+        let term2 = axis_normalized.cross(vector) * sin_angle;
+        let term3 = axis_normalized * axis_normalized.dot(vector) * (1.0 - cos_angle);
+    
+        return term1 + term2 + term3;
     }
 }
 trait ColorHelper {
@@ -105,11 +114,15 @@ impl Camera {
         return Camera {pos, pitch, yaw, fov, screen}
     }
     fn normal(&self) -> Vec3<f32> {
-        let y = Vec3::new(1.0,0.0,0.0);
-        let p = Vec3::new(0.0,1.0,0.0);
-        let mut f = Vec3::new(0.0,0.0,1.0);
-        let mut r1 = f.rotate_around(y, self.yaw);
-        return r1.rotate_around(p, -self.pitch);
+        let axis_y = Vec3::new(1.0,0.0,0.0);
+        let axis_p = Vec3::new(0.0,1.0,0.0);
+
+        let f = Vec3::new(0.0,0.0,1.0);
+
+        let r1 = f.rotate_vector(axis_y, self.yaw);
+        let r2 = r1.rotate_vector(axis_p, self.pitch);
+
+        return r2;
     }
     fn yawtate(&mut self, angle: f32) {
         self.yaw += angle;
@@ -176,10 +189,10 @@ fn cast_rays(c: Camera, obj: Sphere) -> Vec<Rgba<u8>> {
             let mut dist = 0.0;
             if intersect(c.pos, primray, 25.0, obj, &mut dist) {
                 if c.pos.z > obj.center.z {
-                    blue.b -= (blue.b as f32 / dist.powf(2.0)) as u8;
+                    blue.b = (blue.b as f32 / dist.powf(2.0)) as u8;
                     buf.push(blue);
                 } else {
-                    red.r -= (red.r as f32 / dist.powf(2.0)) as u8;
+                    red.r = (red.r as f32 / dist.powf(2.0)) as u8;
                     buf.push(red);
                 }
             } else {
@@ -222,8 +235,8 @@ fn main() {
 
     let t = Triangle::new(p1, p2, p3);*/
 
-    let p4 = Vec3::new(0.0, 0.0, 30.0);
-    let mut s = Sphere::new(p4, 20.0);
+    let p4 = Vec3::new(0.0, 0.0, 12.0);
+    let mut s = Sphere::new(p4, 11.0);
 
     let pos = Vec3::new(0.0, 0.0, 0.0);
     let screen = Vec2::new(W as u32, H as u32);
@@ -266,7 +279,9 @@ fn main() {
                 cam.yawtate(3.1415926536);
             }
             if win.is_key_pressed(Key::R, KeyRepeat::No) {
-                cam.pos == Vec3::new(0.0,0.0,0.0);
+                cam.pos = Vec3::new(0.0,0.0,0.0);
+                cam.pitch = 0.0;
+                cam.yaw = 0.0;
             }
             if win.is_key_pressed(Key::Space, KeyRepeat::No) {
                 println!("{}, ({}, {})", s.center, cam.pos, cam.normal());
