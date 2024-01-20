@@ -160,7 +160,7 @@ impl Light {
     fn new(dir: Ray, spread: f32,  intensity: f32) -> Light {
         return Light {dir, spread, intensity}
     }
-    fn colliding(&self, r: Ray, dist: &mut f32) -> bool {
+    fn colliding(&self, _r: Ray, _dist: &mut f32) -> bool {
         //calculate plane
         return false;
     }
@@ -236,16 +236,16 @@ fn cast_rays(c: Camera, scene: Scene) -> Vec<Rgba<u8>> {
     }
     return buf;
 }
-fn intersect(r: Ray, max_dist: f32, scene: Scene, dist: &mut f32, brightness: &mut f32) -> bool {
+fn intersect(r: Ray, max_dist: f32, scene: Scene, dist: &mut f32, _brightness: &mut f32) -> bool {
     let zero = Vec3::new(0.0,0.0,0.0);
     
     let mut min_dist = max_dist;
-    let mut phit = Vec3::new(0.0,0.0,0.0);
+    let _phit = Vec3::new(0.0,0.0,0.0);
     let mut nhit = Ray::new(zero, zero);
     for obj in scene.objs {
         let mut n = Ray::new(zero, zero);
         let mut c_dist = 0.0;
-        let c = obj.colliding(r, &mut c_dist, &mut n);
+        let _c = obj.colliding(r, &mut c_dist, &mut n);
         if c_dist < min_dist {
             min_dist = c_dist;
             nhit = n;
@@ -266,7 +266,7 @@ fn render_scene(cam: Camera, scene: Scene) -> Vec<u32> {
 }
 fn main() {
     let p4 = Vec3::new(0.0, 0.0, 42.0);
-    let mut s = Sphere::new(p4, 40.0);
+    let s = Sphere::new(p4, 40.0);
 
     let pos = Vec3::new(0.0, 0.0, 0.0);
     let screen = Vec2::new(W as u32, H as u32);
@@ -275,7 +275,7 @@ fn main() {
     let lr = Ray::new(Vec3::new(0.0,-1.0,0.0), Vec3::new(0.0,12.0,0.0));
     let l = Light::new(lr, 0.0, 1.0);
 
-    let mut scene = Scene::new(l, vec!(&s));
+    let scene = Scene::new(l, vec!(&s));
 
     let mut count = 0;
 
@@ -288,7 +288,7 @@ fn main() {
     while win.is_open() {
         count += 1;
             if count > 1000 {
-            let (width, height) = win.get_size();
+            let (_width, _height) = win.get_size();
 
             if win.is_key_down(Key::A) {
                 cam.yawtate(-0.01);
