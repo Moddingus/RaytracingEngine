@@ -10,8 +10,8 @@ use nalgebra::{
     Vector3
 };
 
-const W: usize = 80;
-const H: usize = 80;
+const W: usize = 100;
+const H: usize = 100;
 
 trait Helper {
     fn rotate_around(&self, axis: Vec3<f32>, angle: f32) -> Vec3<f32>;
@@ -50,8 +50,8 @@ impl ColorHelper for Rgba<u8> {
         return (r << 16) | (g << 8) | b;
     }
 }
-trait Collision {
-    fn colliding(&self, p: Vec3<f32>, normal: &mut Vec3<f32>) -> bool;
+trait Shape {
+    fn colliding(&self, r: Ray, dist: &mut f32, normal: &mut Ray) -> bool;
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -74,17 +74,33 @@ impl Sphere {
     fn new(center: Vec3<f32>, rad: f32) -> Sphere {
         return Sphere {center, rad}
     }
-    fn repos(&mut self, center: Vec3<f32>) {
-        self.center = center;
-    }
 }
-impl Collision for Sphere {
-    fn colliding(&self, p: Vec3<f32>, normal: &mut Vec3<f32>) -> bool {
-        if p.distance(self.center) <= self.rad {
-            let n = (p - self.center).normalized();
-            *normal = n;
+impl Shape for Sphere {
+    fn colliding(&self, r: Ray, dist: &mut f32, normal: &mut Ray) -> bool {
+        let v = self.center - r.o;
+        let t = v.dot(r.dir);
+        
+        if t < 0.0 {
+            return false;
+        }
+    
+        let v2 = v.dot(v);
+        let d = self.rad * self.rad - v2 + t * t;
+    
+        if d >= 0.0 {
+    
+            let bruh = r.o + t * r.dir;
+    
+            *dist = bruh.distance(r.o);
+
+
+            let dir = (bruh - &self.center).normalized();
+
+            *normal = Ray::new(bruh, dir); 
+    
             return true;
         }
+    
         return false;
     }
 }
@@ -134,32 +150,49 @@ impl Camera {
         self.fov = fov;
     }
 }
+#[derive(Copy, Clone, Debug)]
 struct Light {
-    pos: Vec3<f32>,
+    dir: Ray,
+    spread: f32,
     intensity: f32,
 }
 impl Light {
-    fn new(pos: Vec3<f32>, intensity: f32) -> Light {
-        return Light {pos, intensity}
+    fn new(dir: Ray, spread: f32,  intensity: f32) -> Light {
+        return Light {dir, spread, intensity}
+    }
+    fn colliding(&self, r: Ray, dist: &mut f32) -> bool {
+        //calculate plane
+        return false;
     }
 }
+#[derive(Clone)]
+struct Scene<'a> {
+    light: Light,
+    objs: Vec<&'a dyn Shape>,
+}
+impl<'a> Scene<'a> {
+    fn new(light: Light, objs: Vec<&dyn Shape>) -> Scene {
+        return Scene {light, objs};
+    }
+}
+#[derive(Copy, Clone, Debug)]
 struct Ray {
-
+    o: Vec3<f32>,
     dir: Vec3<f32>,
 }
 impl Ray {
-    fn new(dir: Vec3<f32>) -> Ray {
-        return Ray {dir}
+    fn new(o: Vec3<f32>, dir: Vec3<f32>) -> Ray {
+        return Ray {o, dir}
     }
 }
 
-fn cast_rays(c: Camera, obj: Sphere) -> Vec<Rgba<u8>> {
+fn cast_rays(c: Camera, scene: Scene) -> Vec<Rgba<u8>> {
     let k = c.screen.x as f32;
     let m = c.screen.y as f32;
 
     let n = c.normal(); //view plane normal 
 
-    let size = 0.25;
+    let size = c.fov;
     let zr = Vec3::new(1.0,0.0,0.0);
     let v = n.rotate_around(zr, 1.5707963268);
     let b = v.cross(n);
@@ -167,10 +200,10 @@ fn cast_rays(c: Camera, obj: Sphere) -> Vec<Rgba<u8>> {
     let gx = (k / 2.0).floor() * size;
     let gy = (m / 2.0).floor() * size;
 
-    let qx = 2.0 * gx / (k - 1.0) * b * size;
-    let qy = 2.0 * gy / (m - 1.0) * v * size;
+    let qx = 2.0 * gx / (k - 1.0) * b;
+    let qy = 2.0 * gy / (m - 1.0) * v;
 
-    let p1m = n * c.fov - gx * b - gy * v;
+    let p1m = n - gx * b - gy * v;
 
     let mut buf = Vec::new();
     for x in 1..(k as u32) + 1 {
@@ -184,81 +217,73 @@ fn cast_rays(c: Camera, obj: Sphere) -> Vec<Rgba<u8>> {
             let mut red = Rgba::new(255,0,0,0);
             let mut blue = Rgba::new(0,0,255,0);
             let black = Rgba::new(0,0,0,0);
-            let primray = Ray::new(r); //primary ray
+            let primray = Ray::new(c.pos, r); //primary ray
 
             let mut dist = 0.0;
-            if intersect(c.pos, primray, 25.0, obj, &mut dist) {
-                if c.pos.z > obj.center.z {
-                    blue.b = (blue.b as f32 / dist.powf(2.0)) as u8;
+            let mut bright = 0.0;
+            if intersect(primray, 99999.9, scene.clone(), &mut dist, &mut bright) {
+                if y as f32 > k / 2.0 {
+                    blue.b = 255 - (blue.b as f32 / dist.powf(2.0)) as u8;
                     buf.push(blue);
                 } else {
-                    red.r = (red.r as f32 / dist.powf(2.0)) as u8;
+                    red.r = 255 - (red.r as f32 / dist.powf(2.0)) as u8;
                     buf.push(red);
                 }
             } else {
                 buf.push(black);
             }
-
-            
-
         }
     }
     return buf;
 }
-fn intersect(p: Vec3<f32>, r: Ray, max_dist: f32, sphere: Sphere, dist: &mut f32) -> bool {
-
-    let v = sphere.center - p;
-    let t = v.dot(r.dir);
+fn intersect(r: Ray, max_dist: f32, scene: Scene, dist: &mut f32, brightness: &mut f32) -> bool {
+    let zero = Vec3::new(0.0,0.0,0.0);
     
-    if (t < 0.0) {
-        return false;
+    let mut min_dist = max_dist;
+    let mut phit = Vec3::new(0.0,0.0,0.0);
+    let mut nhit = Ray::new(zero, zero);
+    for obj in scene.objs {
+        let mut n = Ray::new(zero, zero);
+        let mut c_dist = 0.0;
+        let c = obj.colliding(r, &mut c_dist, &mut n);
+        if c_dist < min_dist {
+            min_dist = c_dist;
+            nhit = n;
+        }
     }
-
-    let v2 = v.dot(v);
-    let dis = sphere.rad * sphere.rad - v2 + t * t;
-
-    if (dis >= 0.0) {
-
-        let bruh = p + t * r.dir;
-
-        *dist = bruh.distance(p);
-
+    if true { //recursive tracing
+        *dist = min_dist;
         return true;
     }
-
     return false;
 }
-fn render_bruh(cam: Camera, s: Sphere) -> Vec<u32> {
+fn render_scene(cam: Camera, scene: Scene) -> Vec<u32> {
     let mut u32buff = Vec::new();
-    for i in cast_rays(cam, s) {
+    for i in cast_rays(cam, scene) {
         u32buff.push(i.u32color());
     }
     return u32buff;
 }
 fn main() {
-    
-    /*let p1 = Vec3::new(-1.0, 0.0, 2.0);
-    let p2 = Vec3::new(1.0, 0.0, 2.0);
-    let p3 = Vec3::new(0.0, 1.0, 3.0);
-
-    let t = Triangle::new(p1, p2, p3);*/
-
-    let p4 = Vec3::new(0.0, 0.0, 3.0);
-    let mut s = Sphere::new(p4, 2.0);
+    let p4 = Vec3::new(0.0, 0.0, 42.0);
+    let mut s = Sphere::new(p4, 40.0);
 
     let pos = Vec3::new(0.0, 0.0, 0.0);
     let screen = Vec2::new(W as u32, H as u32);
     let mut cam = Camera::new(pos, 0.0, 0.0, 1.0, screen);
 
-    let pos2 = Vec3::new(0.0,3.0,0.0);
-    let l = Light::new(pos2, 1.0);
+    let lr = Ray::new(Vec3::new(0.0,-1.0,0.0), Vec3::new(0.0,12.0,0.0));
+    let l = Light::new(lr, 0.0, 1.0);
+
+    let mut scene = Scene::new(l, vec!(&s));
 
     let mut count = 0;
 
     let mut opts = WindowOptions::default();
-    opts.scale = minifb::Scale::X16;
-    let mut buf = render_bruh(cam, s);
+    opts.scale = minifb::Scale::X8;
+    let mut buf = vec![0; H * W];
     let mut win = Window::new("Canvas", W, H, opts).unwrap();
+
 
     while win.is_open() {
         count += 1;
@@ -290,12 +315,22 @@ fn main() {
                 cam.pos = Vec3::new(0.0,0.0,0.0);
                 cam.pitch = 0.0;
                 cam.yaw = 0.0;
+                cam.fov = 1.0;
             }
             if win.is_key_pressed(Key::Space, KeyRepeat::No) {
                 println!("{}, ({}, {})", s.center, cam.pos, cam.normal());
             }
+            if win.is_key_down(Key::Equal) {
+                if cam.fov > 0.0 {
+                    cam.fov -= 0.05;
+                }
+            }
+            if win.is_key_down(Key::Minus) {
+
+                cam.fov += 0.05;
+            }
             
-            buf = render_bruh(cam, s);
+            buf = render_scene(cam, scene.clone());
 
             win.update_with_buffer(&buf, W, H).unwrap();
         }
