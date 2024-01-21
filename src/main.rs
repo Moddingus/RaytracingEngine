@@ -152,13 +152,12 @@ impl Camera {
 }
 #[derive(Copy, Clone, Debug)]
 struct Light {
-    dir: Ray,
-    spread: f32,
+    pos: Vec3<f32>,
     intensity: f32,
 }
 impl Light {
-    fn new(dir: Ray, spread: f32,  intensity: f32) -> Light {
-        return Light {dir, spread, intensity}
+    fn new(pos: Vec3<f32>, intensity: f32) -> Light {
+        return Light {pos, intensity}
     }
     fn colliding(&self, _r: Ray, _dist: &mut f32) -> bool {
         //calculate plane
@@ -183,6 +182,14 @@ struct Ray {
 impl Ray {
     fn new(o: Vec3<f32>, dir: Vec3<f32>) -> Ray {
         return Ray {o, dir}
+    }
+    fn empty() -> Ray {
+        let o = Vec3::new(0.0,0.0,0.0);
+        let dir = Vec3::new(0.0,0.0,0.0);
+        return Ray {
+            o,
+            dir,
+        }
     }
 }
 
@@ -223,10 +230,10 @@ fn cast_rays(c: Camera, scene: Scene) -> Vec<Rgba<u8>> {
             let mut bright = 0.0;
             if intersect(primray, 99999.9, scene.clone(), &mut dist, &mut bright) {
                 if y as f32 > k / 2.0 {
-                    blue.b = 255 - (blue.b as f32 / dist.powf(2.0)) as u8;
+                    blue.b = ((255.0 - (blue.b as f32 / dist.powf(2.0))) * bright) as u8;
                     buf.push(blue);
                 } else {
-                    red.r = 255 - (red.r as f32 / dist.powf(2.0)) as u8;
+                    red.r = ((255.0 - (red.r as f32 / dist.powf(2.0))) * bright) as u8;
                     buf.push(red);
                 }
             } else {
@@ -236,23 +243,44 @@ fn cast_rays(c: Camera, scene: Scene) -> Vec<Rgba<u8>> {
     }
     return buf;
 }
-fn intersect(r: Ray, max_dist: f32, scene: Scene, dist: &mut f32, _brightness: &mut f32) -> bool {
+fn intersect(r: Ray, max_dist: f32, scene: Scene, dist: &mut f32, brightness: &mut f32) -> bool {
     let zero = Vec3::new(0.0,0.0,0.0);
-    
     let mut min_dist = max_dist;
-    let _phit = Vec3::new(0.0,0.0,0.0);
+    let mut phit = Vec3::new(0.0,0.0,0.0);
     let mut nhit = Ray::new(zero, zero);
-    for obj in scene.objs {
+    for obj in scene.clone().objs {
         let mut n = Ray::new(zero, zero);
         let mut c_dist = 0.0;
         let _c = obj.colliding(r, &mut c_dist, &mut n);
         if c_dist < min_dist {
             min_dist = c_dist;
             nhit = n;
+            phit = r.o + r.dir * c_dist;
         }
     }
-    if true { //recursive tracing
+    let mut shadow = true;
+    let d = phit.distance(scene.light.pos);
+
+    if min_dist < max_dist {
         *dist = min_dist;
+        let idir = (scene.light.pos - phit).normalized();
+        let ilray = Ray::new(phit, idir);
+        
+        for obj in scene.clone().objs {
+            let mut _d = 0.0;
+            let mut _n = Ray::empty();
+
+            if obj.colliding(r, &mut _d, &mut _n) {
+                shadow = false;
+                break;
+            }
+        }
+        if shadow {
+            *brightness = 0.25;
+        } else {
+            *brightness = 1.0;
+        }
+
         return true;
     }
     return false;
@@ -268,14 +296,17 @@ fn main() {
     let p4 = Vec3::new(0.0, 0.0, 42.0);
     let s = Sphere::new(p4, 40.0);
 
+    let p5 = Vec3::new(0.0, 0.0, -40.0);
+    let s2 = Sphere::new(p5, 2.0);
+
     let pos = Vec3::new(0.0, 0.0, 0.0);
     let screen = Vec2::new(W as u32, H as u32);
     let mut cam = Camera::new(pos, 0.0, 0.0, 1.0, screen);
 
-    let lr = Ray::new(Vec3::new(0.0,-1.0,0.0), Vec3::new(0.0,12.0,0.0));
-    let l = Light::new(lr, 0.0, 1.0);
+    let lr = Vec3::new(0.0,12.0,0.0);
+    let l = Light::new(lr, 0.0);
 
-    let scene = Scene::new(l, vec!(&s));
+    let scene = Scene::new(l, vec!(&s, &s2));
 
     let mut count = 0;
 
